@@ -366,9 +366,7 @@
 // ══════════════════════════════════════════════════════════
 // CONFIG — clé Airtable uniquement (Anthropic est côté serveur)
 // ══════════════════════════════════════════════════════════
-const AIRTABLE_TOKEN = "patewQSTzBz0UQ7ZR.da6acaa8adacad259868901c2521eb9ce1c1413869d28fd67857288d909e5aa7";
-const AIRTABLE_BASE  = "app56gzlyH0MxcHTe";
-const AIRTABLE_TABLE = "Tonies";
+// Connexion Airtable gérée côté serveur via /.netlify/functions/airtable
 
 // ══════════════════════════════════════════════════════════
 // CATALOGUE DYNAMIQUE (chargé depuis tonies.com)
@@ -440,43 +438,34 @@ let selectedEmoji = "🎵";
 let selectedColor = COLORS[0];
 
 // ══════════════════════════════════════════════════════════
-// AIRTABLE
+// AIRTABLE — via proxy Netlify Function (clés côté serveur)
 // ══════════════════════════════════════════════════════════
-const AT_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${encodeURIComponent(AIRTABLE_TABLE)}`;
-const AT_HEADERS = { "Authorization": `Bearer ${AIRTABLE_TOKEN}`, "Content-Type": "application/json" };
+async function atProxy(action, data) {
+  const r = await fetch("/.netlify/functions/airtable", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, data })
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
 
 async function atList() {
-  let all = [], offset = null;
-  do {
-    const url = AT_URL + "?pageSize=100" + (offset ? `&offset=${offset}` : "");
-    const r = await fetch(url, { headers: AT_HEADERS });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    all = all.concat(d.records);
-    offset = d.offset;
-  } while (offset);
-  return all;
+  const d = await atProxy("list");
+  return d.records;
 }
 
 async function atCreate(fields) {
-  const r = await fetch(AT_URL, {
-    method: "POST", headers: AT_HEADERS,
-    body: JSON.stringify({ records: [{ fields }] })
-  });
-  const d = await r.json();
-  if (d.error) throw new Error(d.error.message);
-  return d.records[0];
+  const d = await atProxy("create", fields);
+  return d.record;
 }
 
 async function atDelete(airtableId) {
-  await fetch(`${AT_URL}/${airtableId}`, { method: "DELETE", headers: AT_HEADERS });
+  await atProxy("delete", { id: airtableId });
 }
 
 async function atPatch(airtableId, fields) {
-  await fetch(`${AT_URL}/${airtableId}`, {
-    method: "PATCH", headers: AT_HEADERS,
-    body: JSON.stringify({ fields })
-  });
+  await atProxy("patch", { id: airtableId, fields });
 }
 
 // ══════════════════════════════════════════════════════════
